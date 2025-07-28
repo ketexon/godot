@@ -142,6 +142,7 @@ private:
 	bool updating_transitions = false;
 
 	Vector2 graph_offset;
+	float graph_zoom = 1.0f;
 
 	void _remove_transition(const Ref<AnimationNodeStateMachineTransition> p_transition);
 	void _rename_transitions(const StringName &p_name, const StringName &p_new_name);
@@ -210,6 +211,9 @@ public:
 
 	void set_graph_offset(const Vector2 &p_offset);
 	Vector2 get_graph_offset() const;
+
+	void set_graph_zoom(float p_zoom);
+	float get_graph_zoom() const;
 
 	virtual NodeTimeInfo _process(const AnimationMixer::PlaybackInfo p_playback_info, bool p_test_only = false) override;
 	virtual String get_caption() const override;

@@ -130,6 +130,13 @@ class AnimationNodeStateMachineEditor : public AnimationTreeNodeEditorPlugin {
 
 	static AnimationNodeStateMachineEditor *singleton;
 
+	Vector2 _transform_point(const Vector2 &p_point) const;
+	Vector2 _inverse_transform_point(const Vector2 &p_point) const;
+	Vector2 _transform_vector(const Vector2 &p_vector) const;
+	Vector2 _inverse_transform_vector(const Vector2 &p_vector) const;
+	Size2 _transform_size(const Size2 &p_size) const;
+	Rect2 _transform_rect(const Rect2 &p_size) const;
+
 	void _state_machine_gui_input(const Ref<InputEvent> &p_event);
 	void _connection_draw(const Vector2 &p_from, const Vector2 &p_to, AnimationNodeStateMachineTransition::SwitchMode p_mode, bool p_enabled, bool p_selected, bool p_travel, float p_fade_ratio, bool p_auto_advance, bool p_is_across_group, float p_opacity = 1.0);
 

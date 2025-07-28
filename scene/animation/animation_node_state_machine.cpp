@@ -1600,6 +1600,14 @@ Vector2 AnimationNodeStateMachine::get_graph_offset() const {
 	return graph_offset;
 }
 
+void AnimationNodeStateMachine::set_graph_zoom(float p_zoom) {
+	graph_zoom = p_zoom;
+}
+
+float AnimationNodeStateMachine::get_graph_zoom() const {
+	return graph_zoom;
+}
+
 AnimationNode::NodeTimeInfo AnimationNodeStateMachine::_process(const AnimationMixer::PlaybackInfo p_playback_info, bool p_test_only) {
 	Ref<AnimationNodeStateMachinePlayback> playback_new = get_parameter(playback);
 	ERR_FAIL_COND_V(playback_new.is_null(), AnimationNode::NodeTimeInfo());

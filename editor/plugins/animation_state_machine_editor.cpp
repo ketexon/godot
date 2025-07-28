@@ -217,7 +217,7 @@ void AnimationNodeStateMachineEditor::_state_machine_gui_input(const Ref<InputEv
 				state_machine_draw->queue_redraw();
 				dragging_selected_attempt = true;
 				dragging_selected = false;
-				drag_from = mb->get_position();
+				drag_from = _inverse_transform_point(mb->get_position());
 				snap_x = StringName();
 				snap_y = StringName();
 				_update_mode();
@@ -413,7 +413,7 @@ void AnimationNodeStateMachineEditor::_state_machine_gui_input(const Ref<InputEv
 			EditorNode::get_singleton()->push_item(anode.ptr(), "", true);
 			dragging_selected_attempt = true;
 			dragging_selected = false;
-			drag_from = mb->get_position();
+			drag_from = _inverse_transform_point(mb->get_position());
 			snap_x = StringName();
 			snap_y = StringName();
 		}
@@ -421,12 +421,29 @@ void AnimationNodeStateMachineEditor::_state_machine_gui_input(const Ref<InputEv
 		return;
 	}
 
+	// Scrolling to zoom
+	if (mb.is_valid() && !mb->is_shift_pressed() && !mb->is_command_or_control_pressed() && mb->is_pressed() && (mb->get_button_index() == MouseButton::WHEEL_UP || mb->get_button_index() == MouseButton::WHEEL_DOWN)) {
+		int dir = (mb->get_button_index() == MouseButton::WHEEL_UP) ? 1 : -1;
+
+		float zoom_level = state_machine->get_graph_zoom() + dir * 0.1f;
+		zoom_level = CLAMP(zoom_level, 0.5f, 2.0f);
+		state_machine->set_graph_zoom(zoom_level);
+
+		// update dragging offset if we are dragging
+		if (dragging_selected_attempt && !read_only) {
+			drag_ofs = _inverse_transform_point(mb->get_position()) - drag_from;
+		}
+
+		state_machine_draw->queue_redraw();
+	}
+
 	Ref<InputEventMouseMotion> mm = p_event;
 
 	// Pan window
 	if (mm.is_valid() && mm->get_button_mask().has_flag(MouseButtonMask::MIDDLE)) {
-		h_scroll->set_value(h_scroll->get_value() - mm->get_relative().x);
-		v_scroll->set_value(v_scroll->get_value() - mm->get_relative().y);
+		Vector2 delta = _inverse_transform_vector(mm->get_relative());
+		h_scroll->set_value(h_scroll->get_value() - delta.x);
+		v_scroll->set_value(v_scroll->get_value() - delta.y);
 	}
 
 	// Move mouse while connecting
@@ -446,7 +463,7 @@ void AnimationNodeStateMachineEditor::_state_machine_gui_input(const Ref<InputEv
 	// Move mouse while moving a node
 	if (mm.is_valid() && dragging_selected_attempt && !read_only) {
 		dragging_selected = true;
-		drag_ofs = mm->get_position() - drag_from;
+		drag_ofs = _inverse_transform_point(mm->get_position()) - drag_from;
 		snap_x = StringName();
 		snap_y = StringName();
 		{
@@ -574,8 +591,18 @@ void AnimationNodeStateMachineEditor::_state_machine_gui_input(const Ref<InputEv
 
 	Ref<InputEventPanGesture> pan_gesture = p_event;
 	if (pan_gesture.is_valid()) {
-		h_scroll->set_value(h_scroll->get_value() + h_scroll->get_page() * pan_gesture->get_delta().x / 8);
-		v_scroll->set_value(v_scroll->get_value() + v_scroll->get_page() * pan_gesture->get_delta().y / 8);
+		Vector2 delta = _inverse_transform_vector(pan_gesture->get_delta());
+		h_scroll->set_value(h_scroll->get_value() + h_scroll->get_page() * delta.x / 8);
+		v_scroll->set_value(v_scroll->get_value() + v_scroll->get_page() * delta.y / 8);
+	}
+
+	Ref<InputEventMagnifyGesture> magnify_gesture = p_event;
+	if (magnify_gesture.is_valid()) {
+		float zoom_level = state_machine->get_graph_zoom() * magnify_gesture->get_factor();
+		zoom_level = CLAMP(zoom_level, 0.5f, 2.0f);
+		state_machine->set_graph_zoom(zoom_level);
+
+		state_machine_draw->queue_redraw();
 	}
 }
 
@@ -989,6 +1016,44 @@ Ref<StyleBox> AnimationNodeStateMachineEditor::_adjust_stylebox_opacity(Ref<Styl
 	return style;
 }
 
+Vector2 AnimationNodeStateMachineEditor::_transform_point(const Vector2 &p_point) const {
+	Vector2 transformed_point = p_point;
+	transformed_point -= state_machine->get_graph_offset() * EDSCALE;
+	transformed_point *= state_machine->get_graph_zoom();
+	return transformed_point;
+}
+
+
+Vector2 AnimationNodeStateMachineEditor::_inverse_transform_point(const Vector2 &p_point) const {
+	Vector2 transformed_point = p_point;
+	transformed_point /= state_machine->get_graph_zoom();
+	transformed_point += state_machine->get_graph_offset() * EDSCALE;
+	return transformed_point;
+}
+
+Vector2 AnimationNodeStateMachineEditor::_transform_vector(const Vector2 &p_vector) const {
+	Vector2 transformed_vector = p_vector;
+	transformed_vector *= state_machine->get_graph_zoom();
+	return transformed_vector;
+}
+
+Vector2 AnimationNodeStateMachineEditor::_inverse_transform_vector(const Vector2 &p_vector) const {
+	Vector2 transformed_vector = p_vector;
+	transformed_vector /= state_machine->get_graph_zoom();
+	return transformed_vector;
+}
+
+Size2 AnimationNodeStateMachineEditor::_transform_size(const Size2 &p_size) const {
+	Size2 transformed_size = p_size;
+	transformed_size *= state_machine->get_graph_zoom();
+	return transformed_size;
+}
+
+Rect2 AnimationNodeStateMachineEditor::_transform_rect(const Rect2 &p_rect) const {
+	Rect2 transformed_rect = Rect2(_transform_point(p_rect.position), _transform_size(p_rect.size));
+	return transformed_rect;
+}
+
 void AnimationNodeStateMachineEditor::_state_machine_draw() {
 	AnimationTree *tree = AnimationTreeEditor::get_singleton()->get_animation_tree();
 	if (!tree) {
@@ -1021,13 +1086,13 @@ void AnimationNodeStateMachineEditor::_state_machine_draw() {
 
 	//snap lines
 	if (dragging_selected) {
-		Vector2 from = (state_machine->get_node_position(selected_node) * EDSCALE) + drag_ofs - state_machine->get_graph_offset() * EDSCALE;
+		Vector2 from = _transform_point((state_machine->get_node_position(selected_node) * EDSCALE) + drag_ofs);
 		if (snap_x != StringName()) {
-			Vector2 to = (state_machine->get_node_position(snap_x) * EDSCALE) - state_machine->get_graph_offset() * EDSCALE;
+			Vector2 to = _transform_point(state_machine->get_node_position(snap_x) * EDSCALE);
 			state_machine_draw->draw_line(from, to, theme_cache.guideline_color, 2);
 		}
 		if (snap_y != StringName()) {
-			Vector2 to = (state_machine->get_node_position(snap_y) * EDSCALE) - state_machine->get_graph_offset() * EDSCALE;
+			Vector2 to = _transform_point(state_machine->get_node_position(snap_y) * EDSCALE);
 			state_machine_draw->draw_line(from, to, theme_cache.guideline_color, 2);
 		}
 	}
@@ -1068,8 +1133,8 @@ void AnimationNodeStateMachineEditor::_state_machine_draw() {
 
 		scroll_range = scroll_range.merge(nr.node); //merge with range
 
-		//now scroll it to draw
-		nr.node.position -= state_machine->get_graph_offset() * EDSCALE;
+		//now transform it to drraw
+		nr.node = _transform_rect(nr.node);
 
 		node_rects.push_back(nr);
 	}
@@ -1078,10 +1143,10 @@ void AnimationNodeStateMachineEditor::_state_machine_draw() {
 
 	//draw connecting line for potential new transition
 	if (connecting) {
-		Vector2 from = (state_machine->get_node_position(connecting_from) * EDSCALE) - state_machine->get_graph_offset() * EDSCALE;
+		Vector2 from = _transform_point(state_machine->get_node_position(connecting_from) * EDSCALE);
 		Vector2 to;
 		if (connecting_to_node != StringName()) {
-			to = (state_machine->get_node_position(connecting_to_node) * EDSCALE) - state_machine->get_graph_offset() * EDSCALE;
+			to = _transform_point(state_machine->get_node_position(connecting_to_node) * EDSCALE);
 		} else {
 			to = connecting_to;
 		}
@@ -1108,11 +1173,11 @@ void AnimationNodeStateMachineEditor::_state_machine_draw() {
 
 		tl.from_node = state_machine->get_transition_from(i);
 		Vector2 ofs_from = (dragging_selected && selected_nodes.has(tl.from_node)) ? drag_ofs : Vector2();
-		tl.from = (state_machine->get_node_position(tl.from_node) * EDSCALE) + ofs_from - state_machine->get_graph_offset() * EDSCALE;
+		tl.from = _transform_point((state_machine->get_node_position(tl.from_node) * EDSCALE) + ofs_from);
 
 		tl.to_node = state_machine->get_transition_to(i);
 		Vector2 ofs_to = (dragging_selected && selected_nodes.has(tl.to_node)) ? drag_ofs : Vector2();
-		tl.to = (state_machine->get_node_position(tl.to_node) * EDSCALE) + ofs_to - state_machine->get_graph_offset() * EDSCALE;
+		tl.to = _transform_point((state_machine->get_node_position(tl.to_node) * EDSCALE) + ofs_to);
 
 		Ref<AnimationNodeStateMachineTransition> tr = state_machine->get_transition(i);
 		tl.disabled = bool(tr->get_advance_mode() == AnimationNodeStateMachineTransition::ADVANCE_MODE_DISABLED);
