@@ -2690,9 +2690,16 @@ void GDScriptAnalyzer::reduce_expression(GDScriptParser::ExpressionNode *p_expre
 }
 
 void GDScriptAnalyzer::reduce_array(GDScriptParser::ArrayNode *p_array) {
+	Array reduced_value;
+	bool is_constant = true;
 	for (int i = 0; i < p_array->elements.size(); i++) {
 		GDScriptParser::ExpressionNode *element = p_array->elements[i];
 		reduce_expression(element);
+		if (!element->is_constant) {
+			is_constant = false;
+		} else if (is_constant) {
+			reduced_value.append(element->reduced_value);
+		}
 	}
 
 	// It's array in any case.
@@ -2703,6 +2710,11 @@ void GDScriptAnalyzer::reduce_array(GDScriptParser::ArrayNode *p_array) {
 	arr_type.is_constant = true;
 
 	p_array->set_datatype(arr_type);
+
+	if (is_constant) {
+		p_array->is_constant = true;
+		p_array->reduced_value = reduced_value;
+	}
 }
 
 #ifdef DEBUG_ENABLED
